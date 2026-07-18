@@ -1,0 +1,22 @@
+# ─── Secrets & credentials — NE JAMAIS COMMIT ────────────────────────────────
+.env
+*.key
+*.pem
+cookies/*.json
+
+# ─── Fichiers personnels (branding, photos, prompts personnalisés) ───────────
+avatar.png
+original_photo.jpg
+*.local.md
+
+# ─── Logs & caches ───────────────────────────────────────────────────────────
+*.log
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# ─── Fichiers temporaires ────────────────────────────────────────────────────
+*.zip
+outputs/
