@@ -999,10 +999,19 @@ async def on_draft_abort(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     query = update.callback_query
     await query.answer()
     draft.clear()
-    await query.edit_message_text(
-        "❌ *Post refusé — tout est annulé.*\n_Relance `/new` quand tu veux._",
-        parse_mode="Markdown",
-    )
+    msg_text = "❌ *Post refusé — tout est annulé.*\n_Relance `/new` quand tu veux._"
+    try:
+        # Message texte classique
+        await query.edit_message_text(msg_text, parse_mode="Markdown")
+    except Exception:
+        # Message document/photo : éditer la légende à la place
+        try:
+            await query.edit_message_caption(caption=msg_text, parse_mode="Markdown")
+        except Exception:
+            await query.edit_message_reply_markup(None)
+            await context.application.bot.send_message(
+                chat_id=TELEGRAM_CHAT_ID, text=msg_text, parse_mode="Markdown"
+            )
 
 
 # ─── Construction de l'application ───────────────────────────────────────────
