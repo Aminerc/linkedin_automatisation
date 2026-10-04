@@ -120,23 +120,29 @@ POST_TYPE_INSTRUCTIONS = {
     "general": (
         "TYPE DE POST : Post de fond (75% des posts).\n"
         "Génère un post éducatif, de réflexion, de conseil pratique, de tendance, mythe vs réalité ou prise de position.\n"
-        "Parle en expert qui partage une connaissance ou un point de vue — pas une expérience personnelle récente.\n"
-        "Reste dans la perspective 'on', 'les équipes', 'les entreprises', 'les dirigeants' — pas 'j'ai fait'.\n"
-        "Angles prioritaires : éducatif, question/réflexion, conseil pratique, mythe vs réalité, opinion tranchée."
+        "Parle en expert qui partage une connaissance ou un point de vue - pas une expérience personnelle récente.\n"
+        "Reste dans la perspective 'on', 'les équipes', 'les entreprises', 'les dirigeants' - pas 'j'ai fait'.\n"
+        "Angles prioritaires : éducatif, question/réflexion, conseil pratique, mythe vs réalité, opinion tranchée.\n"
+        "CLÔTURE OBLIGATOIRE : une question ouverte factuelle. Objectif portée/engagement, pas conversion directe.\n"
+        "Jamais de CTA message privé sur ce type de post."
     ),
     "personal": (
         "TYPE DE POST : Post personnel / expérience (15% des posts).\n"
-        "Génère un post à la première personne, ancré dans une expérience ou réalisation concrète.\n"
+        "Génère un post à la première personne dès la première ligne, ancré dans une expérience ou réalisation concrète.\n"
+        "Ici, commencer par 'Je' est attendu - c'est l'exception à la règle générale d'ouverture du prompt système.\n"
         "Angles possibles : avant/après, leçon apprise, outil que j'ai construit, process que j'ai optimisé.\n"
-        "Ton humble et factuel — pas de sur-vente. Montre la valeur par le concret et les chiffres.\n"
-        "Évite les formulations trop commerciales ou auto-congratulatoires."
+        "Ton factuel, sans sur-vente. Montre la valeur par le concret et les chiffres.\n"
+        "Évite les formulations trop commerciales ou auto-congratulatoires.\n"
+        "CLÔTURE OBLIGATOIRE : un appel à l'action court vers le message privé. Objectif conversion directe.\n"
+        "Jamais de question en plus du CTA."
     ),
     "news": (
         "TYPE DE POST : Post actualité (10% des posts).\n"
         "Génère un post qui réagit à une actualité récente ou tendance du moment en finance, data, IA ou tech.\n"
         "Prends une position claire et argumentée. Ton : expert, réactif, pertinent.\n"
-        "Structure : accroche sur l'actualité → analyse → implication concrète → question ou prise de position.\n"
-        "Exemples d'angles : réforme réglementaire, nouveau modèle d'IA, évolution des pratiques de gestion."
+        "Structure : accroche sur l'actualité → analyse → implication concrète → clôture.\n"
+        "Exemples d'angles : réforme réglementaire, nouveau modèle d'IA, évolution des pratiques de gestion.\n"
+        "CLÔTURE OBLIGATOIRE : une question ouverte qui invite un vrai avis en commentaire. Pas de CTA message privé."
     ),
 }
 
@@ -147,7 +153,7 @@ def load_prompt(theme: str) -> str:
     """
     Charge le system prompt depuis le .md du thème. Relu à chaque appel.
     Si un fichier .local.md existe (version personnalisée, non versionnée),
-    il est utilisé en priorité — ex: theme_finance_compta.local.md
+    il est utilisé en priorité - ex: theme_finance_compta.local.md
     """
     prompt_file = THEMES.get(theme)
     if not prompt_file:
@@ -280,7 +286,7 @@ def generate_post(theme: Optional[str] = None, custom_brief: Optional[str] = Non
     user_message = (
         f"{type_instruction}\n\n"
         f"SUJET OBLIGATOIRE : {forced_subject}\n\n"
-        "Traite EXACTEMENT ce sujet — n'en change pas.\n"
+        "Traite EXACTEMENT ce sujet - n'en change pas.\n"
         "Trouve un angle original et une accroche forte.\n"
         "Reste concret, direct, évite les généralités."
     )

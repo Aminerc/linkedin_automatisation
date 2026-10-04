@@ -48,7 +48,7 @@ CAROUSEL_TOPICS = {
     ],
 }
 
-# ─── Couleurs — palette Ocean Breeze ───────────────────────────────
+# ─── Couleurs - palette Ocean Breeze ───────────────────────────────
 C_BG_DARK    = "#2F4858"   # navy fond
 C_BLUE       = "#336699"   # accent principal
 C_ACCENT     = "#9EE493"   # vert highlight
@@ -117,7 +117,11 @@ def generate_carousel_content(theme: Optional[str] = None, custom_brief: Optiona
 
     client = Anthropic(api_key=ANTHROPIC_API_KEY)
 
-    system = """Tu es expert en création de carousels LinkedIn pour professionnels de la finance et de la tech.
+    system = """Tu es expert en création de carousels LinkedIn pour Amine Ouardi (Optifin Data),
+consultant freelance en pilotage financier et automatisation pour PME. Vouvoiement, première personne
+du singulier si un "je" apparaît (jamais de "nous"), aucun tiret long, utilise un tiret simple -.
+BANNIR : innovant, révolutionnaire, leader, passionné, clé en main, "à 360°", "au cœur de",
+"à l'ère de la data", "accompagner dans la transformation", "expertise reconnue".
 Génère un carousel structuré en JSON strict avec ce format EXACT :
 {
   "title": "Titre accrocheur (max 7 mots)",
@@ -135,7 +139,7 @@ Génère un carousel structuré en JSON strict avec ce format EXACT :
 }
 RÈGLES STRICTES :
 - 5 slides de contenu exactement, numérotées "01" à "05"
-- Chaque slide = 1 idée forte et actionnable
+- Chaque slide = 1 idée forte et actionnable, chiffrée si possible plutôt qu'un adjectif
 - Langage direct, concret, professionnel
 - RETOURNE UNIQUEMENT LE JSON, sans markdown, sans backticks, sans texte autour"""
 
@@ -174,14 +178,18 @@ RÈGLES STRICTES :
 def generate_carousel_from_text(post_text: str, theme: str) -> dict:
     """
     Génère 3-4 slides à partir d'un texte de post DÉJÀ validé.
-    Les slides reprennent les idées du texte — pas de contenu inventé.
+    Les slides reprennent les idées du texte - pas de contenu inventé.
     """
     from anthropic import Anthropic
     from config import ANTHROPIC_API_KEY, CLAUDE_MODEL
 
     client = Anthropic(api_key=ANTHROPIC_API_KEY)
 
-    system = """Tu es expert en création de carousels LinkedIn pour professionnels de la finance.
+    system = """Tu es expert en création de carousels LinkedIn pour Amine Ouardi (Optifin Data),
+consultant freelance en pilotage financier et automatisation pour PME. Vouvoiement, première personne
+du singulier si un "je" apparaît (jamais de "nous"), aucun tiret long, utilise un tiret simple -.
+BANNIR : innovant, révolutionnaire, leader, passionné, clé en main, "à 360°", "au cœur de",
+"à l'ère de la data", "accompagner dans la transformation", "expertise reconnue".
 On te donne le TEXTE FINAL d'un post LinkedIn. Ta mission : le transformer en carousel.
 Génère un JSON strict avec ce format EXACT :
 {
@@ -200,7 +208,8 @@ Génère un JSON strict avec ce format EXACT :
 }
 RÈGLES STRICTES :
 - 3 ou 4 slides selon la richesse du texte (numérotées "01", "02", ...)
-- Chaque slide reprend UNIQUEMENT des idées présentes dans le texte fourni — n'invente rien
+- Chaque slide reprend UNIQUEMENT des idées présentes dans le texte fourni, n'invente rien
+- Si le texte source contient un chiffre, le garder sur la slide plutôt que de le remplacer par un adjectif
 - Langage direct, concret, professionnel
 - RETOURNE UNIQUEMENT LE JSON, sans markdown, sans backticks, sans texte autour"""
 
@@ -365,7 +374,7 @@ def create_carousel_pdf(carousel_data: dict) -> bytes:
         c.drawString(40, sub_y, line)
         sub_y -= 20
 
-    # Avatar coin bas-droit (pleine résolution — le PDF gère l'échelle)
+    # Avatar coin bas-droit (pleine résolution - le PDF gère l'échelle)
     if _AVATAR.exists():
         try:
             from PIL import Image as _PILImage
@@ -488,7 +497,7 @@ def create_carousel_pdf(carousel_data: dict) -> bytes:
     c.line(dm_x - 16, dm_y + 10, dm_x - 10, dm_y + 5)
     c.line(dm_x - 16, dm_y, dm_x - 10, dm_y + 5)
 
-    # Avatar coin bas-droit (pleine résolution — le PDF gère l'échelle)
+    # Avatar coin bas-droit (pleine résolution - le PDF gère l'échelle)
     if _AVATAR.exists():
         try:
             from PIL import Image as _PILImage

@@ -24,10 +24,10 @@ TELEGRAM_CHAT_ID: int = int(os.getenv("TELEGRAM_CHAT_ID", "0"))
 LINKEDIN_EMAIL: str = os.getenv("LINKEDIN_EMAIL", "")
 LINKEDIN_PASSWORD: str = os.getenv("LINKEDIN_PASSWORD", "")
 LINKEDIN_COOKIES_FILE: Path = BASE_DIR / "cookies" / "linkedin_cookies.json"
-# ID numérique LinkedIn — si renseigné, évite l'appel /voyager/api/me à chaque post
+# ID numérique LinkedIn - si renseigné, évite l'appel /voyager/api/me à chaque post
 # Pour le trouver : lancer get_person_id.py ou voir les logs après un post
 LINKEDIN_PERSON_ID: str = os.getenv("LINKEDIN_PERSON_ID", "")
-# Token OAuth officiel LinkedIn (scope w_member_social) — généré par get_linkedin_token.py
+# Token OAuth officiel LinkedIn (scope w_member_social) - généré par get_linkedin_token.py
 LINKEDIN_ACCESS_TOKEN: str = os.getenv("LINKEDIN_ACCESS_TOKEN", "")
 
 # ─── Branding des visuels ────────────────────────────────────────────────────
@@ -46,7 +46,11 @@ SCHEDULE_MINUTE: int = 30    # minute de déclenchement
 # et lus depuis prompts/theme_finance_compta.md et prompts/theme_tech_ia.md
 
 # ─── Modèles ─────────────────────────────────────────────────────────────────
-CLAUDE_MODEL: str = "claude-opus-4-6"
+# claude-opus-4-6 reste valide (retrait pas avant février 2027) mais c'est le tier
+# le plus cher : inutile pour de la génération de post encadrée par des prompts
+# détaillés. claude-sonnet-5-5 (dernier Sonnet) donne une qualité équivalente
+# pour ce cas d'usage, à coût nettement inférieur.
+CLAUDE_MODEL: str = "claude-sonnet-5-5"
 PERPLEXITY_MODEL: str = "sonar-pro"   # alternatives : "sonar", "sonar-reasoning"
 
 # ─── Poids des providers (doivent totaliser 1.0) ─────────────────────────────
