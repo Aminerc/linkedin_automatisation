@@ -56,8 +56,8 @@ PERPLEXITY_MODEL: str = "sonar-pro"   # alternatives : "sonar", "sonar-reasoning
 # ─── Poids des providers (doivent totaliser 1.0) ─────────────────────────────
 # Augmente PERPLEXITY_WEIGHT pour réduire la conso Claude API
 PROVIDER_WEIGHTS: dict[str, float] = {
-    "claude":     0.30,   # 30% des appels
-    "perplexity": 0.70,   # 70% des appels
+    "claude":     1.00,   # 100% Claude (Perplexity désactivé)
+    "perplexity": 0.00,
 }
 
 # ─── Playwright ──────────────────────────────────────────────────────────────
@@ -69,8 +69,6 @@ def validate_config() -> list[str]:
     errors = []
     if not ANTHROPIC_API_KEY:
         errors.append("ANTHROPIC_API_KEY manquante dans .env")
-    if not PERPLEXITY_API_KEY:
-        errors.append("PERPLEXITY_API_KEY manquante dans .env")
     if not TELEGRAM_BOT_TOKEN:
         errors.append("TELEGRAM_BOT_TOKEN manquant dans .env")
     if not TELEGRAM_CHAT_ID:

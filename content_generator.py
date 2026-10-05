@@ -201,11 +201,11 @@ def _call_claude(system_prompt: str, user_message: str) -> str:
     """Appel Claude API (Anthropic)."""
     response = claude_client.messages.create(
         model=CLAUDE_MODEL,
-        max_tokens=1024,
+        max_tokens=4096,
         system=system_prompt,
         messages=[{"role": "user", "content": user_message}],
     )
-    return response.content[0].text.strip()
+    return "".join(b.text for b in response.content if b.type == "text").strip()
 
 
 def _call_perplexity(system_prompt: str, user_message: str) -> str:
@@ -288,7 +288,9 @@ def generate_post(theme: Optional[str] = None, custom_brief: Optional[str] = Non
         f"SUJET OBLIGATOIRE : {forced_subject}\n\n"
         "Traite EXACTEMENT ce sujet - n'en change pas.\n"
         "Trouve un angle original et une accroche forte.\n"
-        "Reste concret, direct, évite les généralités."
+        "Reste concret, direct, évite les généralités.\n"
+        "Zéro jargon technique (pas de data warehouse, base SQL, table, API, ETL, pipeline, script) : "
+        "traduis chaque notion en ce que le dirigeant voit ou gagne."
     )
 
     logger.info(f"Génération | thème : {theme} | type : {post_type}")
@@ -360,13 +362,15 @@ def new_post(previous_post: Optional[str] = None, theme: Optional[str] = None) -
             f"{type_instruction}\n\n"
             "Génère un post COMPLÈTEMENT DIFFÉRENT du précédent.\n\n"
             f"Post précédent à ne pas reproduire :\n{previous_post[:400]}...\n\n"
-            "Change l'angle, le sujet, le style. Ne reprends aucune formulation."
+            "Change l'angle, le sujet, le style. Ne reprends aucune formulation.\n"
+            "Zéro jargon technique : traduis chaque notion en ce que le dirigeant voit ou gagne."
         )
     else:
         user_message = (
             f"{type_instruction}\n\n"
             "Génère un post original sur ce thème.\n"
-            "Trouve un angle frais et une accroche qui sort du lot."
+            "Trouve un angle frais et une accroche qui sort du lot.\n"
+            "Zéro jargon technique : traduis chaque notion en ce que le dirigeant voit ou gagne."
         )
 
     logger.info(f"Nouveau post | thème : {theme} | type : {post_type}")

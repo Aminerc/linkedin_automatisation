@@ -115,11 +115,11 @@ RÈGLES :
 
         resp = client.messages.create(
             model=CLAUDE_MODEL,
-            max_tokens=300,
+            max_tokens=2048,
             system=system,
             messages=[{"role": "user", "content": f"Post :\n\n{post_content}"}],
         )
-        raw = resp.content[0].text.strip()
+        raw = "".join(b.text for b in resp.content if b.type == "text").strip()
         if "```" in raw:
             for part in raw.split("```"):
                 part = part.strip()

@@ -26,6 +26,10 @@ logging.basicConfig(
         logging.FileHandler("linkedin_bot.log", encoding="utf-8"),
     ],
 )
+# Masque les URL Telegram (qui contiennent le token) dans les logs
+for _noisy in ("httpx", "httpx2", "httpcore"):
+    logging.getLogger(_noisy).setLevel(logging.WARNING)
+
 logger = logging.getLogger(__name__)
 
 
