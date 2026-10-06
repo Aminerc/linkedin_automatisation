@@ -20,3 +20,6 @@ venv/
 # ─── Fichiers temporaires ────────────────────────────────────────────────────
 *.zip
 outputs/
+
+# ─── Historique des sujets (anti-répétition, propre au serveur) ─────────────
+data/

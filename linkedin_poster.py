@@ -14,6 +14,7 @@ Endpoints officiels :
 
 import json
 import logging
+import re
 import random
 import time
 from pathlib import Path
@@ -31,7 +32,18 @@ logger = logging.getLogger(__name__)
 
 # ─── Endpoints ────────────────────────────────────────────────────────────────
 _API_BASE      = "https://api.linkedin.com"
-_LI_VERSION    = "202507"
+# Version de l'API LinkedIn (format AAAAMM). LinkedIn retire chaque version
+# au bout d'environ 1 an : on prend automatiquement le mois d'il y a 2 mois.
+# Forçable via LINKEDIN_API_VERSION dans le .env.
+def _default_li_version() -> str:
+    import datetime
+    d = datetime.date.today().replace(day=1)
+    for _ in range(2):
+        d = (d - datetime.timedelta(days=1)).replace(day=1)
+    return d.strftime("%Y%m")
+
+
+_LI_VERSION    = __import__("os").getenv("LINKEDIN_API_VERSION") or _default_li_version()
 
 IMAGES_ENDPOINT    = f"{_API_BASE}/rest/images?action=initializeUpload"
 DOCUMENTS_ENDPOINT = f"{_API_BASE}/rest/documents?action=initializeUpload"
@@ -230,10 +242,23 @@ def upload_document(person_id: str, pdf_bytes: bytes) -> Optional[str]:
 
 # ─── Payload builders ─────────────────────────────────────────────────────────
 
+# Caractères réservés du format "little text" de LinkedIn : non échappés, ils
+# tronquent ou abîment le post (ex : texte coupé à la première parenthèse).
+_LITTLE_RESERVED = "\\|{}@[]()<>#*_~"
+
+
+def _escape_little(text: str) -> str:
+    """Échappe le texte pour le champ commentary et garde les hashtags cliquables."""
+    text = text.replace("\r\n", "\n").replace("\u2028", "\n")
+    out = "".join("\\" + ch if ch in _LITTLE_RESERVED else ch for ch in text)
+    # \#Mot → {hashtag|\#|Mot} (hashtag cliquable)
+    return re.sub(r"\\#(\w+)", r"{hashtag|\\#|\1}", out)
+
+
 def _base_payload(person_id: str, commentary: str) -> dict:
     return {
         "author":       f"urn:li:person:{person_id}",
-        "commentary":   commentary,
+        "commentary":   _escape_little(commentary),
         "visibility":   "PUBLIC",
         "distribution": {
             "feedDistribution":            "MAIN_FEED",

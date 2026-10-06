@@ -3,7 +3,7 @@ telegram_bot.py
 Bot Telegram pour la validation des posts LinkedIn avant publication.
 
 Flow post texte :
-  /generate → choisir thème → post + image générés → 4 boutons
+  /generate → choisir l'angle → post + image générés → 4 boutons
   ✅ Publier / ✏️ Modifier / 🔄 Régénérer / ❌ Supprimer
 
 Flow carousel :
@@ -12,7 +12,7 @@ Flow carousel :
 
 Commandes :
   /start           → présentation
-  /generate        → sélection thème puis génération post
+  /generate        → choix de l'angle puis génération post
   /brief <sujet>   → post sur un sujet précis
   /carousel [sujet]→ carousel PDF (sujet optionnel)
   /status          → posts en attente
@@ -74,16 +74,38 @@ def carousel_keyboard() -> InlineKeyboardMarkup:
     ])
 
 
+# Thème unique "Pilotage de PME" : on choisit seulement un angle (ou la surprise)
+DOMAIN_BUTTONS = [
+    ("💰 Argent & marges", "argent"),
+    ("🤝 Clients & ventes", "clients"),
+    ("👥 Équipe & orga", "equipe"),
+    ("📦 Achats & stocks", "operations"),
+    ("⚙️ Outils & temps gagné", "outils"),
+    ("🧭 Décisions dirigeant", "dirigeant"),
+]
+DOMAIN_LABELS = {key: label for label, key in DOMAIN_BUTTONS}
+# Anciens boutons encore affichés dans le chat
+LEGACY_DOMAINS = {"finance": "argent", "tech": "outils", "random": None}
+
+
+def _domain_from_callback(data: str, prefix: str) -> Optional[str]:
+    key = data[len(prefix):]
+    key = LEGACY_DOMAINS.get(key, key)
+    return key if key in DOMAIN_LABELS else None
+
+
+def _domain_keyboard(prefix: str) -> InlineKeyboardMarkup:
+    rows = [
+        [InlineKeyboardButton(DOMAIN_BUTTONS[i][0], callback_data=prefix + DOMAIN_BUTTONS[i][1]),
+         InlineKeyboardButton(DOMAIN_BUTTONS[i + 1][0], callback_data=prefix + DOMAIN_BUTTONS[i + 1][1])]
+        for i in range(0, len(DOMAIN_BUTTONS), 2)
+    ]
+    rows.append([InlineKeyboardButton("🎲 Surprise (recommandé)", callback_data=prefix + "random")])
+    return InlineKeyboardMarkup(rows)
+
+
 def theme_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("💼 Finance & Compta", callback_data="theme_finance"),
-            InlineKeyboardButton("🤖 Tech & IA", callback_data="theme_tech"),
-        ],
-        [
-            InlineKeyboardButton("🎲 Aléatoire", callback_data="theme_random"),
-        ],
-    ])
+    return _domain_keyboard("theme_")
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -128,7 +150,7 @@ async def send_post_for_approval(
     if theme:
         header += f"\n🏷️ _{theme}_"
     if image_bytes:
-        header += "\n🖼️ _Image DALL-E attachée_"
+        header += "\n🖼️ _Visuel attaché_"
 
     text = (
         f"{header}\n\n"
@@ -226,19 +248,8 @@ async def on_theme_selected(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await query.answer("⛔ Non autorisé.", show_alert=True)
         return
 
-    theme_map = {
-        "theme_finance": "Finance, Compta & Gestion",
-        "theme_tech": "Tech & IA appliquée à la Finance",
-        "theme_random": None,
-    }
-    label_map = {
-        "theme_finance": "💼 Finance & Compta",
-        "theme_tech": "🤖 Tech & IA",
-        "theme_random": "🎲 Aléatoire",
-    }
-
-    theme = theme_map.get(query.data)
-    label = label_map.get(query.data, "")
+    domain = _domain_from_callback(query.data, "theme_")
+    label = DOMAIN_LABELS.get(domain, "🎲 Surprise")
 
     await query.edit_message_text(
         f"⏳ _Génération en cours — {label}..._",
@@ -249,7 +260,7 @@ async def on_theme_selected(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         from content_generator import generate_post
         from image_generator import generate_post_image
 
-        content, theme_used = generate_post(theme=theme)
+        content, theme_used = generate_post(domain=domain)
 
         image_bytes: Optional[bytes] = None
         try:
@@ -563,13 +574,13 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "👋 *LinkedIn Automation Bot*\n\n"
         "Je génère et publie tes posts LinkedIn automatiquement.\n\n"
         "*Commandes :*\n"
-        "• `/generate` — choix du thème puis génération\n"
+        "• `/generate` — choix de l'angle puis génération\n"
         "• `/brief <sujet>` — génère sur un sujet précis\n"
         "• `/carousel [sujet]` — génère un carousel PDF\n"
         "• `/status` — posts en attente\n"
         "• `/chatid` — ton chat ID\n\n"
         "*Planning automatique :*\n"
-        "• Lun/Ven → post texte + image DALL-E\n"
+        "• Lun/Ven → post texte + visuel\n"
         "• Mer → carousel PDF 5 slides\n\n"
         "*Distribution :*\n"
         "75% fond · 15% expérience · 10% actualité",
@@ -581,7 +592,7 @@ async def cmd_generate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if not _is_authorized(update):
         return
     await update.message.reply_text(
-        "📝 *Quel thème pour ce post ?*",
+        "📝 *Quel angle pour ce post ?*",
         parse_mode="Markdown",
         reply_markup=theme_keyboard(),
     )
@@ -690,10 +701,7 @@ def type_keyboard() -> InlineKeyboardMarkup:
 
 
 def draft_theme_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("💼 Finance & Comptabilité", callback_data="d_theme_finance")],
-        [InlineKeyboardButton("🤖 Outils, Data & IA", callback_data="d_theme_tech")],
-    ])
+    return _domain_keyboard("d_theme_")
 
 
 def text_validation_keyboard() -> InlineKeyboardMarkup:
@@ -744,7 +752,7 @@ async def on_draft_type(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     draft["type"] = query.data.replace("d_type_", "")
     labels = {"text": "📝 Texte seul", "pdf": "📄 Texte + PDF", "carousel": "🎠 Texte + Carrousel"}
     await query.edit_message_text(
-        f"{labels[draft['type']]}\n\n*Quel thème ?*",
+        f"{labels[draft['type']]}\n\n*Quel angle ?*",
         parse_mode="Markdown",
         reply_markup=draft_theme_keyboard(),
     )
@@ -759,16 +767,15 @@ async def on_draft_theme(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await query.edit_message_text("⚠️ Draft expiré. Relance `/new`.", parse_mode="Markdown")
         return
 
-    theme_map = {
-        "d_theme_finance": "Finance, Compta & Gestion",
-        "d_theme_tech": "Tech & IA appliquée à la Finance",
-    }
-    draft["theme"] = theme_map[query.data]
+    from content_generator import THEME_NAME
+    domain = _domain_from_callback(query.data, "d_theme_")
+    draft["theme"] = THEME_NAME
+    draft["domain"] = domain
 
     await query.edit_message_text("⏳ _Génération du texte..._", parse_mode="Markdown")
     try:
         from content_generator import generate_post
-        content, _ = generate_post(theme=draft["theme"])
+        content, _ = generate_post(domain=draft.get("domain"))
         draft["content"] = content
         draft["text_ok"] = False
         draft["visual_ok"] = False
@@ -822,9 +829,11 @@ async def _generate_and_send_visual(context: ContextTypes.DEFAULT_TYPE) -> None:
         caption = f"🎠 *Carrousel à valider* — {len(data.get('slides', []))} slides + couverture + CTA"
         filename = "carousel.pdf"
     else:
+        from image_generator import LAST_VISUAL
         pdf = create_quote_pdf(draft["theme"], draft["content"])
         draft["carousel_data"] = None
-        caption = "📄 *PDF 1 page à valider*"
+        draft["doc_title"] = LAST_VISUAL.get("title", "")
+        caption = f"📄 *PDF 1 page à valider*\n🏷️ Titre du document : _{_escape_md(_doc_title())}_"
         filename = "post.pdf"
 
     draft["visual_bytes"] = pdf
@@ -959,6 +968,23 @@ async def on_draft_vis_regen(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await wait.edit_text(f"❌ Erreur visuel : {e}")
 
 
+def _doc_title() -> str:
+    """Titre affiché au-dessus du document sur LinkedIn : titre du visuel, sinon 1re phrase du post."""
+    if draft.get("carousel_data"):
+        title = draft["carousel_data"].get("title", "")
+    else:
+        title = draft.get("doc_title", "")
+    if not title:
+        first = draft.get("content", "").strip().split("\n")[0]
+        for sep in (". ", " ? ", " ! "):
+            if sep in first:
+                first = first.split(sep)[0]
+                break
+        title = first
+    title = title.strip().rstrip(".")
+    return title if len(title) <= 100 else title[:97].rsplit(" ", 1)[0] + "..."
+
+
 async def on_draft_publish(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer()
@@ -975,10 +1001,7 @@ async def on_draft_publish(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         result = await post_to_linkedin(draft["content"])
     else:
         from linkedin_poster import post_carousel_to_linkedin
-        if draft.get("carousel_data"):
-            title = draft["carousel_data"].get("title", "Post LinkedIn")
-        else:
-            title = " ".join(draft["content"].split()[:6])
+        title = _doc_title()
         result = await post_carousel_to_linkedin(
             content=draft["content"],
             pdf_bytes=draft["visual_bytes"],

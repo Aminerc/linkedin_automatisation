@@ -37,8 +37,14 @@ auth_url = (
     f"&prompt=consent"  # Force le ré-affichage du consentement pour obtenir w_member_social
 )
 
-print("🔗 Ouverture LinkedIn dans le navigateur...")
-webbrowser.open(auth_url)
+print("🔗 Ouvre ce lien dans ton navigateur (sur ton PC si tu es sur le serveur) :")
+print()
+print(auth_url)
+print()
+try:
+    webbrowser.open(auth_url)
+except Exception:
+    pass
 print("\nAprès avoir cliqué 'Autoriser' sur LinkedIn,")
 print("ton navigateur va afficher une erreur (page introuvable) — c'est normal.")
 print("\nCopie l'URL complète de la barre d'adresse et colle-la ici :")

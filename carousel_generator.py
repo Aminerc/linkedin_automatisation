@@ -45,27 +45,36 @@ DASH_DIR = BASE_DIR / "assets" / "dashboards"
 
 BRAND_LINE = f"{BRAND_NAME} · Optifin Data"
 
-# ─── Sujets par thème ─────────────────────────────────────────────────────────
-CAROUSEL_TOPICS = {
-    "Finance, Compta & Gestion": [
-        "Les signes que votre reporting vous coûte plus qu'il ne vous sert",
-        "Pourquoi le chiffre d'affaires monte et la marge baisse",
-        "Les retards de paiement clients qui pèsent sur la trésorerie",
-        "Ce que coûte une clôture mensuelle trop lente",
-        "Le stock qui dort et immobilise la trésorerie",
-        "Les indicateurs financiers qu'un dirigeant devrait voir chaque mois",
-        "Budget annuel : pourquoi il ne sert plus à rien en mars",
-        "Les clients qui rapportent moins qu'ils ne coûtent",
-    ],
-    "Tech & IA appliquée à la Finance": [
-        "Les tâches de reporting qui ne devraient plus être faites à la main",
-        "Excel ou tableau de bord : quand il est temps de passer le cap",
-        "Les relances clients qui peuvent partir toutes seules",
-        "Ce que change un tableau de bord mis à jour chaque matin",
-        "Les signes qu'une seule personne tient tout le pilotage",
-        "Pourquoi deux personnes donnent deux chiffres différents",
-    ],
-}
+# ─── Sujets de carrousel (thème unique, tirage anti-répétition) ──────────────
+CAROUSEL_TOPICS = [
+    # Argent
+    "Pourquoi le chiffre d'affaires monte et la marge baisse",
+    "Les retards de paiement clients qui pèsent sur la trésorerie",
+    "Les produits ou services qui font du volume sans rien rapporter",
+    "Savoir combien il restera sur le compte dans 8 semaines",
+    # Clients et ventes
+    "Augmenter ses prix sans perdre ses clients",
+    "Les devis envoyés qui ne sont jamais relancés",
+    "Le client qui pèse 30 % du chiffre d'affaires",
+    "Les clients qui rapportent moins qu'ils ne coûtent",
+    # Équipe et organisation
+    "Quand une seule personne connaît le fichier qui fait tourner l'entreprise",
+    "La masse salariale qui grossit plus vite que le chiffre d'affaires",
+    "Le temps perdu à recopier des chiffres d'un fichier à l'autre",
+    # Achats, stocks, production
+    "Le stock qui dort et immobilise la trésorerie",
+    "La hausse des prix fournisseurs que vos prix de vente n'ont pas suivie",
+    "Ce que coûte réellement une heure de production",
+    "Les livraisons en retard et ce qu'elles coûtent vraiment",
+    # Outils
+    "Les signes que votre reporting vous coûte plus qu'il ne vous sert",
+    "Excel ou tableau de bord : quand il est temps de passer le cap",
+    "Les relances clients qui peuvent partir toutes seules",
+    # Dirigeant
+    "Les chiffres qu'un dirigeant devrait voir chaque lundi matin",
+    "Budget annuel : pourquoi il ne sert plus à rien en mars",
+    "Grandir trop vite : quand la croissance vide la trésorerie",
+]
 
 # ─── Charte Ocean Breeze ──────────────────────────────────────────────────────
 INK = colors.HexColor("#2F4858")
@@ -105,10 +114,10 @@ Retourne un JSON strict, exactement ces clés :
   "hook_figure": "le chiffre qui frappe, 10 caractères max, ex : 24 jours, 351 k€, J+15",
   "hook_figure_label": "ce que signifie ce chiffre pour le lecteur, au conditionnel ou à la 2e personne, 90 caractères max. Ex : par an, si votre reporting vous prend 2 jours chaque mois.",
   "title": "la promesse du carrousel, 70 caractères max",
-  "intro": "le texte du post LinkedIn qui accompagne le carrousel : 120 à 200 mots, hook en ligne 1, paragraphes de 1 à 3 lignes séparés par une ligne vide, une seule clôture : appel à écrire en message privé, 2 à 3 hashtags sur la dernière ligne",
+  "intro": "le texte du post LinkedIn qui accompagne le carrousel : COURT, 60 à 100 mots, 750 signes maximum hashtags compris. Hook chiffré en ligne 1, paragraphes de 1 à 2 lignes séparés par une ligne vide, ne résume pas tout le carrousel (il donne envie de le feuilleter), une seule clôture : appel à écrire en message privé, 2 à 3 hashtags sur la dernière ligne",
   "slides": [
     {{
-      "quote": "une phrase qu'un dirigeant de PME dit vraiment, à la 1re personne, 80 caractères max, sans guillemets",
+      "quote": "une phrase qu'un dirigeant de PME dit vraiment, à la 1re personne, 80 caractères max, sans guillemets. Formulée à l'actif : une intention (« Je veux savoir quelle marge est la bonne ») ou un constat factuel (« Je relance quand j'ai le temps »), jamais un aveu d'ignorance (« Je ne sais pas... »)",
       "title": "le constat, formulé comme une affirmation, 60 caractères max",
       "exhibit": UNE des deux formes ci-dessous,
       "action": "ce que je ferais à votre place : à la 1re personne (Amine), concret, applicable ce mois-ci, 140 caractères max, commence par Je"
@@ -236,11 +245,10 @@ def _system_prompt(theme: str) -> str:
 
 def generate_carousel_content(theme: Optional[str] = None, custom_brief: Optional[str] = None) -> dict:
     """Génère un carrousel complet sur un sujet (tiré au sort ou fourni)."""
-    from content_generator import THEMES
+    from content_generator import THEME_NAME, pick_from
 
-    if not theme:
-        theme = random.choice(list(THEMES.keys()))
-    subject = custom_brief or random.choice(CAROUSEL_TOPICS.get(theme, CAROUSEL_TOPICS["Finance, Compta & Gestion"]))
+    theme = THEME_NAME
+    subject = custom_brief or pick_from(CAROUSEL_TOPICS, "carousels")
 
     logger.info(f"Génération carousel | sujet : {subject} | thème : {theme}")
     data = _call_claude(_system_prompt(theme), f"Crée le carrousel sur ce sujet : {subject}")
@@ -632,10 +640,16 @@ def create_quote_pdf(theme: str, post_text: str) -> bytes:
     """Crée un PDF 1 page à partir de la quote card PNG (image_generator)."""
     from image_generator import generate_post_image
 
+    from image_generator import LAST_VISUAL
+
     png_bytes = generate_post_image(theme, post_text)
+    iw, ih = Image.open(io.BytesIO(png_bytes)).size
+    pw, ph = 540, 540 * ih / iw   # même format que l'image (4:5)
     buf = io.BytesIO()
-    c = rl_canvas.Canvas(buf, pagesize=(1200, 630))
-    c.drawImage(ImageReader(io.BytesIO(png_bytes)), 0, 0, width=1200, height=630)
+    c = rl_canvas.Canvas(buf, pagesize=(pw, ph))
+    c.setTitle(LAST_VISUAL.get("title", "") or "Optifin Data")
+    c.setAuthor("Amine Ouardi")
+    c.drawImage(ImageReader(io.BytesIO(png_bytes)), 0, 0, width=pw, height=ph)
     c.showPage()
     c.save()
     logger.info(f"Quote PDF généré ({buf.tell() // 1024} KB)")

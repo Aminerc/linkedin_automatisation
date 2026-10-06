@@ -1,15 +1,14 @@
 """
 image_generator.py
-Génère des visuels LinkedIn avec Pillow — template graphique (palette Ocean Breeze).
+Visuel de post LinkedIn Optifin Data (Pillow), même style que la couverture des carrousels.
 
-Style : quote card 1200x630px
-  - Fond navy #2F4858 avec dégradé vers #336699
-  - Kicker selon le thème + accroche Poppins Bold avec mot-clé vert #9EE493
-  - Sous-ligne Lato Light Italic
-  - Avatar détouré en bas à droite (avatar.png à la racine du projet)
+Format : 1080 x 1350 (4:5 portrait, occupe le plus de place dans le fil mobile)
+  - Fond clair, chiffre clé en très grand, phrase de sens, affirmation du post
+  - Portrait d'Amine en bas à droite (avatar.png à la racine du projet)
+  - Police Inter, palette Ocean Breeze
 
-Le contenu du visuel (accroche, mot-clé, sous-ligne) est extrait du post
-validé via Claude. Fallback heuristique si l'appel échoue.
+Le contenu (chiffre, légende, affirmation) est extrait du post validé via Claude.
+Fallback sans LLM si l'appel échoue.
 """
 
 import io
@@ -23,96 +22,78 @@ logger = logging.getLogger(__name__)
 try:
     from config import BRAND_NAME, BRAND_TAGLINE
 except ImportError:
-    BRAND_NAME, BRAND_TAGLINE = "Votre Nom", "Automatisation & Data pour la finance"
+    BRAND_NAME, BRAND_TAGLINE = "Amine Ouardi", "Pilotage financier et outils sur mesure pour les PME"
 
 BASE_DIR = Path(__file__).parent
 FONTS_DIR = BASE_DIR / "fonts"
 AVATAR_PATH = BASE_DIR / "avatar.png"
 
 # ─── Palette Ocean Breeze ────────────────────────────────────────────────────
-NAVY_DARK  = (47, 72, 88)      # 2F4858 — fond
-BLUE       = (51, 102, 153)    # 336699 — accent
-BLUE_LIGHT = (134, 187, 216)   # 86BBD8 — texte secondaire
-GREEN      = (158, 228, 147)   # 9EE493 — highlight
-GREEN_PALE = (218, 247, 220)   # DAF7DC
-WHITE      = (255, 255, 255)
+INK = (47, 72, 88)          # 2F4858
+PRIMARY = (51, 102, 153)    # 336699
+SECONDARY = (134, 187, 216) # 86BBD8
+ACCENT = (158, 228, 147)    # 9EE493
+BG = (245, 247, 249)        # F5F7F9
+MUTED = (107, 123, 135)     # 6B7B87
+WHITE = (255, 255, 255)
 
-W, H = 1200, 630
+W, H = 1080, 1350
 
-# ─── Polices (projet d'abord, système en fallback) ───────────────────────────
-_FONT_CANDIDATES = {
-    "title": [
-        FONTS_DIR / "Poppins-Bold.ttf",
-        "/usr/share/fonts/truetype/google-fonts/Poppins-Bold.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-        "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans-Bold.ttf",
-    ],
-    "kicker": [
-        FONTS_DIR / "Poppins-Medium.ttf",
-        "/usr/share/fonts/truetype/google-fonts/Poppins-Medium.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-        "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans-Bold.ttf",
-    ],
-    "subline": [
-        FONTS_DIR / "Lato-LightItalic.ttf",
-        "/usr/share/fonts/truetype/lato/Lato-LightItalic.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans.ttf",
-    ],
-    "footer": [
-        FONTS_DIR / "Lato-Regular.ttf",
-        "/usr/share/fonts/truetype/lato/Lato-Regular.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans.ttf",
-    ],
+# Contenu du dernier visuel généré (sert de titre au document PDF sur LinkedIn)
+LAST_VISUAL: dict = {}
+M = 80
+
+_FONTS = {
+    "regular": "Inter-Regular.ttf",
+    "medium": "Inter-Medium.ttf",
+    "semibold": "Inter-SemiBold.ttf",
+    "bold": "Inter-Bold.ttf",
+    "black": "Inter-ExtraBold.ttf",
 }
+_FALLBACKS = [
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans-Bold.ttf",
+]
 
 
-def _load_font(kind: str, size: int):
+def _font(kind: str, size: int):
     from PIL import ImageFont
-    for path in _FONT_CANDIDATES[kind]:
+    for path in [FONTS_DIR / _FONTS[kind], *_FALLBACKS]:
         try:
             return ImageFont.truetype(str(path), size)
         except (IOError, OSError):
             continue
-    logger.warning(f"Police '{kind}' introuvable — police par défaut")
     return ImageFont.load_default()
 
 
-# ─── Kicker selon le thème ───────────────────────────────────────────────────
 def _kicker_for_theme(theme: str) -> str:
-    if "Tech" in theme or "IA" in theme:
-        return "AUTOMATISATION · DATA & IA"
-    return "FINANCE & COMPTABILITÉ"
+    """Repli si Claude ne fournit pas de bandeau (le bandeau suit normalement le sujet du post)."""
+    return "PILOTAGE DE PME"
 
 
-# ─── Extraction du contenu visuel via Claude ─────────────────────────────────
+# ─── Contenu du visuel ───────────────────────────────────────────────────────
 
 def _extract_visual_content(post_content: str) -> Optional[dict]:
-    """
-    Demande à Claude d'extraire l'accroche du visuel depuis le post.
-    Retourne {"lines": [...], "highlight": "...", "subline": "..."} ou None.
-    """
+    """Demande à Claude le chiffre clé, sa légende et l'affirmation du visuel."""
     try:
         from anthropic import Anthropic
         from config import ANTHROPIC_API_KEY, CLAUDE_MODEL
 
         client = Anthropic(api_key=ANTHROPIC_API_KEY)
-
-        system = """Tu extrais le contenu d'un visuel LinkedIn depuis un post.
+        system = """Tu prépares le visuel qui accompagne un post LinkedIn, à partir du texte du post.
 Retourne un JSON strict :
 {
-  "lines": ["ligne 1", "ligne 2", "ligne 3"],
-  "highlight": "mot ou chiffre clé",
-  "subline": "phrase de contexte"
+  "kicker": "2 à 3 mots sur le sujet du post, ex : Trésorerie · Délais clients, Équipe · Recrutement, Prix · Marges",
+  "figure": "le chiffre le plus fort du post, 10 caractères max, ex : 32 800 €, 24 jours, J+15",
+  "figure_label": "ce que signifie ce chiffre pour le lecteur, 80 caractères max",
+  "title": "l'idée du post en une affirmation, 70 caractères max"
 }
 RÈGLES :
-- "lines" : l'accroche du post reformulée en 2 ou 3 lignes courtes, 26 caractères MAX par ligne
-- L'accroche doit être percutante : le chiffre ou le fait le plus fort du post
-- "highlight" : LE mot ou chiffre le plus impactant, il doit apparaître tel quel dans une des lignes
-- "subline" : 1 phrase courte de contexte ou bénéfice (55 caractères max)
+- Uniquement des chiffres présents dans le post, jamais un chiffre inventé
+- Si le post n'a aucun chiffre, "figure" vaut ""
+- Vouvoiement, zéro jargon technique, aucun tiret cadratin, aucun emoji
+- Jamais "PME type"
 - RETOURNE UNIQUEMENT LE JSON, sans backticks, sans texte autour"""
-
         resp = client.messages.create(
             model=CLAUDE_MODEL,
             max_tokens=2048,
@@ -120,137 +101,117 @@ RÈGLES :
             messages=[{"role": "user", "content": f"Post :\n\n{post_content}"}],
         )
         raw = "".join(b.text for b in resp.content if b.type == "text").strip()
-        if "```" in raw:
-            for part in raw.split("```"):
-                part = part.strip()
-                if part.startswith("json"):
-                    part = part[4:].strip()
-                if part.startswith("{"):
-                    raw = part
-                    break
-        data = json.loads(raw)
-        if not data.get("lines"):
+        start, end = raw.find("{"), raw.rfind("}")
+        data = json.loads(raw[start:end + 1])
+        if not data.get("title"):
             return None
-        return data
+        return {k: str(data.get(k) or "").replace("—", "-").strip()
+                for k in ("kicker", "figure", "figure_label", "title")}
     except Exception as e:
         logger.warning(f"Extraction visuel échouée : {e}")
         return None
 
 
-def _fallback_content(post_content: str) -> dict:
-    """Fallback sans LLM : première phrase découpée en lignes de ~24 chars."""
-    clean = post_content.replace("\n", " ").strip()
-    words = [w for w in clean.split() if not w.startswith("#")]
-    clean = " ".join(words)
-    for sep in [".", "!", "?"]:
-        idx = clean.find(sep)
-        if 20 < idx < 90:
-            clean = clean[: idx + 1]
+def _fallback_content(post_content: str, theme: str) -> dict:
+    """Sans LLM : la première phrase du post devient l'affirmation."""
+    words = [w for w in post_content.replace("\n", " ").split() if not w.startswith("#")]
+    text = " ".join(words)
+    for sep in (".", "!", "?"):
+        idx = text.find(sep)
+        if 20 < idx < 110:
+            text = text[: idx + 1]
             break
     else:
-        clean = clean[:80]
-
-    lines, current = [], []
-    for w in clean.split():
-        current.append(w)
-        if len(" ".join(current)) > 24:
-            lines.append(" ".join(current[:-1]))
-            current = [current[-1]]
-        if len(lines) == 3:
-            break
-    if current and len(lines) < 3:
-        lines.append(" ".join(current))
-
-    return {"lines": lines, "highlight": "", "subline": ""}
+        text = text[:100]
+    return {"kicker": _kicker_for_theme(theme), "figure": "", "figure_label": "", "title": text}
 
 
 # ─── Rendu ───────────────────────────────────────────────────────────────────
 
+def _wrap(draw, text, font, max_w):
+    lines, cur = [], ""
+    for w in str(text).split():
+        t = (cur + " " + w).strip()
+        if draw.textlength(t, font=font) <= max_w:
+            cur = t
+        else:
+            if cur:
+                lines.append(cur)
+            cur = w
+    if cur:
+        lines.append(cur)
+    return lines
+
+
+def _fit(draw, text, kind, start, minimum, max_w, max_lines):
+    size = start
+    while size > minimum and len(_wrap(draw, text, _font(kind, size), max_w)) > max_lines:
+        size -= 2
+    return size
+
+
+def _block(draw, text, x, y, font, lead, fill, max_w, max_lines):
+    for ln in _wrap(draw, text, font, max_w)[:max_lines]:
+        draw.text((x, y), ln, font=font, fill=fill)
+        y += lead
+    return y
+
+
 def generate_post_image(theme: str, post_content: str = "") -> bytes:
-    """
-    Génère le visuel 1200x630 : template graphique, contenu extrait du post.
-    Retourne bytes PNG.
-    """
+    """Génère le visuel 1080x1350 à partir du post validé. Retourne des octets PNG."""
     from PIL import Image, ImageDraw
 
     data = _extract_visual_content(post_content) if post_content else None
     if not data:
-        data = _fallback_content(post_content or theme)
+        data = _fallback_content(post_content or theme, theme)
+    LAST_VISUAL.clear()
+    LAST_VISUAL.update(data)
 
-    lines = [str(l) for l in data.get("lines", [])][:3]
-    highlight = str(data.get("highlight", "") or "")
-    subline = str(data.get("subline", "") or "")
-
-    img = Image.new("RGB", (W, H), NAVY_DARK)
+    img = Image.new("RGB", (W, H), BG)
     d = ImageDraw.Draw(img)
 
-    # Dégradé navy → blue
-    for y in range(H):
-        r = y / H * 0.25
-        c = tuple(int(NAVY_DARK[i] + (BLUE[i] - NAVY_DARK[i]) * r) for i in range(3))
-        d.line([(0, y), (W, y)], fill=c)
-
-    # Barre accent top + cercles déco
-    d.rectangle([0, 0, W, 8], fill=GREEN)
-    d.ellipse([W - 220, -120, W + 80, 180], outline=BLUE_LIGHT, width=3)
-    d.ellipse([W - 160, -60, W + 20, 120], outline=BLUE, width=3)
-
-    # Kicker
-    kick_font = _load_font("kicker", 24)
-    d.text((70, 72), _kicker_for_theme(theme), font=kick_font, fill=GREEN)
-    d.rectangle([70, 112, 150, 115], fill=GREEN)
-
-    # Titre — taille auto-ajustée à la ligne la plus longue
-    size = 64
-    max_width = W - 140
-    title_font = _load_font("title", size)
-    while size > 40 and any(d.textlength(l, font=title_font) > max_width for l in lines):
-        size -= 4
-        title_font = _load_font("title", size)
-
-    line_h = int(size * 1.38)
-    n = len(lines)
-    y0 = 160 if n == 3 else 190
-
-    for i, line in enumerate(lines):
-        y = y0 + i * line_h
-        if highlight and highlight in line:
-            before, after = line.split(highlight, 1)
-            x = 70
-            if before:
-                d.text((x, y), before, font=title_font, fill=WHITE)
-                x += d.textlength(before, font=title_font)
-            d.text((x, y), highlight, font=title_font, fill=GREEN)
-            x += d.textlength(highlight, font=title_font)
-            if after:
-                d.text((x, y), after, font=title_font, fill=WHITE)
-        else:
-            d.text((70, y), line, font=title_font, fill=WHITE)
-
-    # Sous-ligne
-    if subline:
-        sub_font = _load_font("subline", 32)
-        d.text((70, y0 + n * line_h + 35), subline, font=sub_font, fill=BLUE_LIGHT)
-
-    # Avatar bas-droite
+    # Portrait sur grand cercle bleu clair, en bas à droite
+    text_w = W - 2 * M
     if AVATAR_PATH.exists():
         try:
+            d.ellipse([W - 240 - 350, H - 300 - 350, W - 240 + 350, H - 300 + 350], fill=SECONDARY)
             av = Image.open(AVATAR_PATH).convert("RGBA")
-            av = av.crop((0, 0, av.width, int(av.height * 0.52)))
-            ratio = 300 / av.height
-            av = av.resize((int(av.width * ratio), 300), Image.LANCZOS)
-            img.paste(av, (W - av.width - 40, H - av.height), av)
+            av = av.crop((0, 0, av.width, int(av.height * 0.58)))
+            disp_h = 680
+            av = av.resize((int(av.width * disp_h / av.height), disp_h), Image.LANCZOS)
+            img.paste(av, (W - av.width - 12, H - disp_h), av)
+            text_w = 540
         except Exception as e:
             logger.warning(f"Avatar non intégré : {e}")
 
-    # Footer branding
-    brand_font = _load_font("kicker", 24)
-    foot_font = _load_font("footer", 20)
-    d.text((70, H - 85), BRAND_NAME, font=brand_font, fill=WHITE)
-    d.text((70, H - 52), BRAND_TAGLINE, font=foot_font, fill=BLUE_LIGHT)
+    # En-tête
+    d.text((M, 64), (data.get("kicker") or _kicker_for_theme(theme)).upper(),
+           font=_font("semibold", 22), fill=PRIMARY)
+
+    y = 130
+    # Chiffre clé
+    if data.get("figure"):
+        size = _fit(d, data["figure"], "black", 210, 110, W - 2 * M, 1)
+        f = _font("black", size)
+        d.text((M - 6, y), data["figure"], font=f, fill=PRIMARY)
+        y += int(size * 1.12)
+        if data.get("figure_label"):
+            y = _block(d, data["figure_label"], M, y, _font("medium", 32), 44, MUTED, W - 2 * M - 40, 3)
+        y += 44
+    else:
+        y += 60
+
+    # Affirmation
+    size = _fit(d, data["title"], "black", 62 if data.get("figure") else 76, 40, text_w, 5)
+    _block(d, data["title"], M, y, _font("black", size), int(size * 1.18), INK, text_w, 5)
+
+    # Étiquette nom
+    d.rounded_rectangle([M, H - 236, M + 440, H - 132], radius=20, fill=INK)
+    d.text((M + 32, H - 214), BRAND_NAME, font=_font("bold", 30), fill=WHITE)
+    d.text((M + 32, H - 172), "Pilotage financier et outils pour PME", font=_font("regular", 22), fill=ACCENT)
+    d.text((M, H - 80), "Optifin Data", font=_font("semibold", 24), fill=PRIMARY)
 
     buf = io.BytesIO()
     img.save(buf, format="PNG", optimize=True)
     logger.info(f"Visuel généré ({buf.tell() // 1024} KB) | thème : {theme}")
-    buf.seek(0)
-    return buf.read()
+    return buf.getvalue()

@@ -10,12 +10,14 @@ Distribution des types de posts :
 Le provider est sélectionné aléatoirement à chaque appel selon les poids
 définis dans config.py (PROVIDER_WEIGHTS). Par défaut 30% Claude / 70% Perplexity.
 
-Les system prompts sont lus dynamiquement depuis :
-  prompts/theme_finance_compta.md
-  prompts/theme_tech_ia.md
+Thème unique "Pilotage de PME" : le system prompt est lu dynamiquement depuis
+  prompts/theme_pme.local.md (prioritaire, non versionné) ou prompts/theme_pme.md
 → Modifie ces fichiers sans redémarrer le bot.
+Variété : un domaine (argent, clients, équipe, opérations, outils, dirigeant)
+puis un sujet sont tirés au sort en évitant les derniers utilisés.
 """
 
+import json
 import random
 import logging
 from pathlib import Path
@@ -44,70 +46,121 @@ perplexity_client = OpenAI(
 
 PROMPTS_DIR = Path(__file__).parent / "prompts"
 
-# ─── Thèmes → fichiers prompts ────────────────────────────────────────────────
+THEME_NAME = "Pilotage de PME"
+
+# ─── Thème unique → fichier prompt ────────────────────────────────────────────
 THEMES = {
-    "Finance, Compta & Gestion": PROMPTS_DIR / "theme_finance_compta.md",
-    "Tech & IA appliquée à la Finance": PROMPTS_DIR / "theme_tech_ia.md",
+    THEME_NAME: PROMPTS_DIR / "theme_pme.md",
 }
 
-# ─── Sujets forcés par thème (rotation obligatoire) ──────────────────────────
-# Le sujet est tiré au sort et injecté dans le prompt pour éviter la répétition
+# Anciens noms de thèmes (posts en attente, callbacks Telegram) → thème unique
+LEGACY_THEMES = {
+    "Finance, Compta & Gestion": THEME_NAME,
+    "Tech & IA appliquée à la Finance": THEME_NAME,
+}
+
+# ─── Domaines et sujets (rotation anti-répétition) ────────────────────────────
+# Tout ce qui fait la vie d'une PME. Le domaine et le sujet sont tirés au sort
+# en évitant les derniers utilisés (historique dans data/topics_history.json).
+DOMAINS = {
+    "argent": "Trésorerie, marges et rentabilité",
+    "clients": "Clients, ventes et prix",
+    "equipe": "Équipe, recrutement et organisation",
+    "operations": "Achats, stocks et production",
+    "outils": "Outils, automatisation et temps gagné",
+    "dirigeant": "Décisions et quotidien du dirigeant",
+}
+
 FORCED_TOPICS = {
-    "Finance, Compta & Gestion": [
-        "Facturation électronique : les entreprises qui ne se préparent pas maintenant vont souffrir",
-        "Clôture mensuelle : pourquoi attendre le 15 du mois suivant est un luxe qu'on ne peut plus se permettre",
-        "Le budget annuel est mort. Vive le rolling forecast",
-        "DSO, DPO, DIO : les 3 ratios que tout DAF devrait connaître par cœur",
-        "Audit interne PME : pas besoin d'une équipe dédiée pour bien contrôler",
-        "La différence entre un expert-comptable et un vrai partenaire financier",
-        "Pourquoi votre résultat comptable ne reflète pas la santé réelle de votre entreprise",
-        "SIG : le compte de résultat ne suffit pas pour piloter",
-        "Cash is king : 5 leviers concrets pour améliorer sa trésorerie sans lever de fonds",
-        "La paie externalisée : avantages, risques, et ce qu'on ne te dit pas",
-        "Holding vs société opérationnelle : quand ça vaut le coup de structurer",
-        "Pourquoi les PME sous-estiment toujours leur besoin en fonds de roulement",
-        "Rapport de gestion mensuel : les 5 indicateurs qui comptent vraiment",
-        "TVA intracommunautaire : les erreurs qui coûtent cher",
-        "Passer de la comptabilité de trésorerie à la comptabilité d'engagement",
-        "La cession d'entreprise : ce que les chiffres ne montrent pas",
-        "Contrôle de gestion sans ERP : c'est possible, voilà comment",
-        "Filiale étrangère en France : les pièges comptables et fiscaux à éviter",
-        "Marges par produit/client : pourquoi 80% des PME pilotent à l'aveugle",
-        "Plan de financement vs plan de trésorerie : la confusion qui coûte cher",
-        "Les provisions : souvent oubliées, toujours importantes",
-        "Tableaux de bord financiers : moins d'indicateurs, plus d'impact",
-        "Optimisation fiscale légale : ce que les dirigeants de PME ignorent souvent",
-        "La vraie valeur d'un DAF à temps partagé pour une PME",
-        "Post-levée de fonds : comment structurer son pilotage financier rapidement",
+    "argent": [
+        "Le chiffre d'affaires monte et le compte en banque ne suit pas",
+        "Les clients qui paient à 60 jours pendant que vous payez vos fournisseurs à 30",
+        "Savoir combien il restera sur le compte dans 8 semaines, pas seulement aujourd'hui",
+        "Le résultat comptable de l'an dernier ne dit rien de la marge de ce mois-ci",
+        "Les produits ou services qui font du volume mais ne rapportent rien",
+        "Le prix de revient que personne n'a recalculé depuis 3 ans",
+        "Les frais fixes qui ont grossi sans que personne ne décide",
+        "Ce qu'une facture envoyée 10 jours trop tard coûte en trésorerie",
+        "Le seuil de rentabilité : à partir de quel chiffre le mois commence à rapporter",
+        "Préparer un rendez-vous avec son banquier avec des chiffres qu'il comprend",
+        "Les abonnements et contrats qui tournent encore et ne servent plus",
+        "La facturation électronique obligatoire : ce que ça change concrètement au quotidien",
     ],
-    "Tech & IA appliquée à la Finance": [
-        "Power Query vs VBA : arrêtez de coder ce que Power Query fait en 3 clics",
-        "Un dashboard Power BI pour les nuls en finance : par où commencer vraiment",
-        "Python pour les contrôleurs de gestion : cas d'usage concrets et accessibles",
-        "ChatGPT dans Excel : ce que ça change pour les équipes finance au quotidien",
-        "Les 5 automatisations Excel que toute équipe finance devrait avoir",
-        "SQL pour analyser ses données comptables sans passer par l'IT",
-        "Connecter son ERP à Power BI : les erreurs classiques et comment les éviter",
-        "IA générative et clôture comptable : ce qui est déjà possible aujourd'hui",
-        "Réconciliation bancaire automatique : techniquement simple, souvent ignorée",
-        "Make vs Zapier pour automatiser les process financiers : comparatif honnête",
-        "Agents IA en finance : au-delà du buzz, ce qui fonctionne vraiment",
-        "Le reporting qui prenait 3 jours se fait maintenant en 30 minutes",
-        "Extraction automatique de données depuis des PDF de factures",
-        "Prévisionnels de trésorerie en temps réel : architecture simple avec Python",
-        "Traitement des notes de frais : 0 intervention humaine, c'est possible",
-        "Consolidation multi-entités automatisée sans ERP de groupe",
-        "OCR et comptabilité : comment automatiser la saisie des factures fournisseurs",
-        "Data warehouse financier léger : pourquoi une PME en a besoin",
-        "Dématérialisation des archives comptables : contraintes légales et solutions pratiques",
-        "Tableau vs Power BI vs Looker : lequel choisir pour une équipe finance",
-        "Les limites de l'IA en finance : ce qu'elle ne fera jamais à ta place",
-        "Automatiser ses relances clients avec un script Python simple",
-        "API open banking : comment récupérer ses données bancaires automatiquement",
-        "Low-code et finance : les outils qui changent vraiment la vie des équipes",
-        "Intégration Pennylane / Sellsy / Qonto → Power BI : retour d'expérience",
+    "clients": [
+        "Le client qui fait 30 % du chiffre d'affaires : force ou danger",
+        "Augmenter ses prix sans perdre ses clients : regarder d'abord la marge par client",
+        "Les devis envoyés qui ne sont jamais relancés",
+        "Les remises accordées au cas par cas qui mangent la marge",
+        "Savoir quels clients ne sont pas revenus depuis 6 mois",
+        "Relancer un impayé sans abîmer la relation client",
+        "Le commercial qui vend beaucoup mais à faible marge",
+        "Suivre ses prospects dans un carnet, un Excel ou la tête du dirigeant",
+        "Le coût réel d'un client difficile : temps passé, litiges, retards",
+        "Pourquoi le meilleur mois en chiffre d'affaires n'est pas toujours le meilleur mois en marge",
+        "Les petits clients qui coûtent plus qu'ils ne rapportent",
+        "Fidéliser coûte moins cher que prospecter : le calcul sur vos propres chiffres",
+    ],
+    "equipe": [
+        "Quand une seule personne connaît le fichier qui fait tourner l'entreprise",
+        "Le vrai coût d'un recrutement raté dans une petite structure",
+        "La masse salariale qui augmente plus vite que le chiffre d'affaires",
+        "Les heures passées à recopier des chiffres d'un fichier à l'autre",
+        "L'absentéisme et le turnover : ce qu'ils coûtent vraiment",
+        "Déléguer sans perdre la visibilité sur ce qui se passe",
+        "Les réunions du lundi où chacun arrive avec un chiffre différent",
+        "Préparer l'arrivée d'un nouveau salarié sans que tout repose sur le dirigeant",
+        "Le temps passé par l'équipe sur des tâches que personne n'a jamais questionnées",
+        "Recruter ou mieux s'organiser : comment trancher avec des chiffres",
+        "Les primes et objectifs que personne ne peut vérifier",
+        "Ce qui se passe quand la personne qui tient la compta part en congés",
+    ],
+    "operations": [
+        "Le stock qui dort et immobilise de la trésorerie",
+        "Les ruptures de stock qui font perdre des ventes sans que personne ne les compte",
+        "Les achats passés au fil de l'eau sans comparer les fournisseurs",
+        "La hausse des prix fournisseurs que les prix de vente n'ont pas suivie",
+        "Les retards de livraison qui coûtent plus que le transport",
+        "Le taux d'utilisation des machines : ce qui tourne vraiment",
+        "Les pertes, la casse et les invendus que personne ne chiffre",
+        "Savoir ce que coûte réellement une heure de production",
+        "Les chantiers ou projets qui dépassent le budget sans alerte",
+        "Inventaire annuel : découvrir l'écart une fois par an, c'est trop tard",
+        "Les commandes urgentes qui désorganisent tout le planning",
+        "Le fournisseur unique dont tout dépend",
+    ],
+    "outils": [
+        "Le tableau Excel devenu impossible à modifier sans tout casser",
+        "Le reporting mensuel qui prend 2 jours à préparer",
+        "Les relances clients qui pourraient partir toutes seules",
+        "Un tableau de bord mis à jour chaque matin sans intervention",
+        "Les logiciels achetés qui ne parlent pas entre eux",
+        "Quand passer d'Excel à un vrai tableau de bord",
+        "Un outil sur mesure ou un logiciel du marché : comment choisir",
+        "Ce que l'IA fait déjà bien dans une petite entreprise, et ce qu'elle ne fait pas",
+        "Les factures fournisseurs saisies à la main une par une",
+        "Le suivi des projets dispersé entre mails, carnets et fichiers",
+        "Trois indicateurs sur un écran plutôt que 40 onglets",
+        "Les chiffres que le dirigeant demande et qu'il faut une demi-journée pour sortir",
+    ],
+    "dirigeant": [
+        "Décider le soir sur des chiffres qui datent du mois dernier",
+        "Les 5 chiffres qu'un dirigeant devrait voir chaque lundi matin",
+        "Le budget fait en janvier qui ne sert plus à rien en mars",
+        "Ouvrir un deuxième site ou une nouvelle activité : les chiffres à regarder avant",
+        "Préparer la vente ou la transmission de son entreprise plusieurs années avant",
+        "Ce qu'il faut demander à son expert-comptable et ce qu'il ne fera pas à votre place",
+        "Grandir trop vite : quand la croissance vide la trésorerie",
+        "Passer de chef d'entreprise qui fait tout à dirigeant qui pilote",
+        "Les décisions prises au feeling qui auraient pu être vérifiées en 10 minutes",
+        "Quand se faire accompagner, et sur quoi exactement",
+        "Traverser une baisse d'activité : ce qu'il faut regarder en premier",
+        "Réorganiser son entreprise sans casser ce qui marche",
     ],
 }
+
+HISTORY_FILE = Path(__file__).parent / "data" / "topics_history.json"
+HISTORY_SIZE = 40           # sujets récents à ne pas reprendre
+RECENT_DOMAINS = 2          # domaines récents évités au tirage suivant
 
 # ─── Distribution des types de posts ─────────────────────────────────────────
 POST_TYPE_WEIGHTS = {
@@ -138,10 +191,10 @@ POST_TYPE_INSTRUCTIONS = {
     ),
     "news": (
         "TYPE DE POST : Post actualité (10% des posts).\n"
-        "Génère un post qui réagit à une actualité récente ou tendance du moment en finance, data, IA ou tech.\n"
+        "Génère un post qui réagit à une actualité récente ou tendance du moment qui touche la vie des PME (réglementation, économie, banque, emploi, outils, IA).\n"
         "Prends une position claire et argumentée. Ton : expert, réactif, pertinent.\n"
         "Structure : accroche sur l'actualité → analyse → implication concrète → clôture.\n"
-        "Exemples d'angles : réforme réglementaire, nouveau modèle d'IA, évolution des pratiques de gestion.\n"
+        "Exemples d'angles : réforme réglementaire, taux et crédit, prix de l'énergie, recrutement, nouvel usage de l'IA.\n"
         "CLÔTURE OBLIGATOIRE : une question ouverte qui invite un vrai avis en commentaire. Pas de CTA message privé."
     ),
 }
@@ -155,7 +208,8 @@ def load_prompt(theme: str) -> str:
     Si un fichier .local.md existe (version personnalisée, non versionnée),
     il est utilisé en priorité - ex: theme_finance_compta.local.md
     """
-    prompt_file = THEMES.get(theme)
+    theme = LEGACY_THEMES.get(theme, theme)
+    prompt_file = THEMES.get(theme) or THEMES[THEME_NAME]
     if not prompt_file:
         raise FileNotFoundError(f"Thème inconnu : '{theme}'")
 
@@ -171,8 +225,58 @@ def load_prompt(theme: str) -> str:
 
 
 def pick_theme() -> str:
-    """Tire un thème au hasard."""
-    return random.choice(list(THEMES.keys()))
+    """Thème unique."""
+    return THEME_NAME
+
+
+def _load_history() -> dict:
+    try:
+        return json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return {"posts": [], "carousels": []}
+
+
+def _save_history(history: dict) -> None:
+    try:
+        HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
+        for key in ("posts", "carousels"):
+            history[key] = history.get(key, [])[-HISTORY_SIZE:]
+        HISTORY_FILE.write_text(json.dumps(history, ensure_ascii=False, indent=1), encoding="utf-8")
+    except Exception as e:
+        logger.warning(f"Historique sujets non sauvegardé : {e}")
+
+
+def pick_topic(domain: Optional[str] = None) -> Tuple[str, str]:
+    """
+    Tire (domaine, sujet) en évitant les domaines et sujets récents.
+    domain : clé de DOMAINS pour forcer un domaine, sinon tirage.
+    """
+    history = _load_history()
+    recent = history.get("posts", [])
+    used = {h.get("topic") for h in recent}
+
+    if domain not in FORCED_TOPICS:
+        recent_domains = [h.get("domain") for h in recent[-RECENT_DOMAINS:]]
+        choices = [d for d in FORCED_TOPICS if d not in recent_domains] or list(FORCED_TOPICS)
+        domain = random.choice(choices)
+
+    fresh = [t for t in FORCED_TOPICS[domain] if t not in used] or FORCED_TOPICS[domain]
+    topic = random.choice(fresh)
+
+    recent.append({"domain": domain, "topic": topic})
+    history["posts"] = recent
+    _save_history(history)
+    return domain, topic
+
+
+def pick_from(pool: list, kind: str = "carousels") -> str:
+    """Tire un élément d'une liste en évitant les derniers utilisés (ex : sujets de carrousel)."""
+    history = _load_history()
+    used = set(history.get(kind, []))
+    item = random.choice([x for x in pool if x not in used] or pool)
+    history.setdefault(kind, []).append(item)
+    _save_history(history)
+    return item
 
 
 def pick_post_type() -> str:
@@ -253,9 +357,35 @@ def _call_llm(system_prompt: str, user_message: str, force_provider: Optional[st
             )
 
 
+# ─── Garde-fou de longueur ────────────────────────────────────────────────────
+
+MAX_POST_CHARS = 1000
+
+
+def _enforce_length(post: str, system_prompt: str) -> str:
+    """Si le post dépasse la limite, demande à Claude de le resserrer (une seule fois)."""
+    if len(post) <= MAX_POST_CHARS:
+        return post
+    logger.info(f"Post trop long ({len(post)} signes) : resserrage")
+    user_message = (
+        f"Ce post fait {len(post)} signes. Ramène-le sous {MAX_POST_CHARS} signes, hashtags compris.\n"
+        "Garde le hook, le chiffre central et la clôture. Supprime des idées entières plutôt que de "
+        "raccourcir chaque phrase. Garde le même ton, les mêmes règles, et les retours à la ligne.\n"
+        "Retourne uniquement le post.\n\n"
+        f"{post}"
+    )
+    try:
+        shorter, _ = _call_llm(system_prompt, user_message, force_provider="claude")
+        return shorter if len(shorter) < len(post) else post
+    except Exception as e:
+        logger.warning(f"Resserrage impossible : {e}")
+        return post
+
+
 # ─── Génération d'un post ─────────────────────────────────────────────────────
 
-def generate_post(theme: Optional[str] = None, custom_brief: Optional[str] = None, post_type: Optional[str] = None) -> Tuple[str, str]:
+def generate_post(theme: Optional[str] = None, custom_brief: Optional[str] = None, post_type: Optional[str] = None,
+                  domain: Optional[str] = None) -> Tuple[str, str]:
     """
     Génère un post LinkedIn.
 
@@ -263,12 +393,12 @@ def generate_post(theme: Optional[str] = None, custom_brief: Optional[str] = Non
         theme: clé du thème (tiré au sort si None)
         custom_brief: sujet libre fourni via /brief
         post_type: 'general', 'personal' ou 'news' (tiré au sort si None)
+        domain: clé de DOMAINS pour forcer un domaine (tiré au sort si None)
 
     Returns:
         (contenu du post, thème utilisé)
     """
-    if not theme:
-        theme = pick_theme()
+    theme = pick_theme()
 
     if not post_type:
         post_type = pick_post_type()
@@ -277,14 +407,15 @@ def generate_post(theme: Optional[str] = None, custom_brief: Optional[str] = Non
     type_instruction = POST_TYPE_INSTRUCTIONS[post_type]
 
     if custom_brief:
-        forced_subject = custom_brief
+        forced_subject, domain_label = custom_brief, "libre"
     else:
-        # Sujet forcé tiré au sort pour garantir la variété
-        topics = FORCED_TOPICS.get(theme, list(FORCED_TOPICS.values())[0])
-        forced_subject = random.choice(topics)
+        # Domaine + sujet tirés au sort, en évitant les derniers utilisés
+        domain, forced_subject = pick_topic(domain)
+        domain_label = DOMAINS[domain]
 
     user_message = (
         f"{type_instruction}\n\n"
+        f"DOMAINE : {domain_label}\n"
         f"SUJET OBLIGATOIRE : {forced_subject}\n\n"
         "Traite EXACTEMENT ce sujet - n'en change pas.\n"
         "Trouve un angle original et une accroche forte.\n"
@@ -293,8 +424,9 @@ def generate_post(theme: Optional[str] = None, custom_brief: Optional[str] = Non
         "traduis chaque notion en ce que le dirigeant voit ou gagne."
     )
 
-    logger.info(f"Génération | thème : {theme} | type : {post_type}")
+    logger.info(f"Génération | domaine : {domain_label} | sujet : {forced_subject} | type : {post_type}")
     post, provider = _call_llm(system_prompt, user_message)
+    post = _enforce_length(post, system_prompt)
     logger.info(f"Post généré ({len(post.split())} mots) via {provider.upper()}")
     return post, theme
 
@@ -350,8 +482,7 @@ def new_post(previous_post: Optional[str] = None, theme: Optional[str] = None) -
     Returns:
         (contenu du nouveau post, thème utilisé)
     """
-    if not theme:
-        theme = pick_theme()
+    theme = pick_theme()
 
     post_type = pick_post_type()
     system_prompt = load_prompt(theme)
@@ -362,18 +493,22 @@ def new_post(previous_post: Optional[str] = None, theme: Optional[str] = None) -
             f"{type_instruction}\n\n"
             "Génère un post COMPLÈTEMENT DIFFÉRENT du précédent.\n\n"
             f"Post précédent à ne pas reproduire :\n{previous_post[:400]}...\n\n"
-            "Change l'angle, le sujet, le style. Ne reprends aucune formulation.\n"
+            "Change l'angle, le sujet, le style. Choisis un autre domaine de la vie de l'entreprise "
+            "(argent, clients, équipe, achats et stocks, outils, décisions du dirigeant). "
+            "Ne reprends aucune formulation.\n"
             "Zéro jargon technique : traduis chaque notion en ce que le dirigeant voit ou gagne."
         )
     else:
+        domain, subject = pick_topic()
         user_message = (
             f"{type_instruction}\n\n"
-            "Génère un post original sur ce thème.\n"
+            f"DOMAINE : {DOMAINS[domain]}\nSUJET OBLIGATOIRE : {subject}\n\n"
             "Trouve un angle frais et une accroche qui sort du lot.\n"
             "Zéro jargon technique : traduis chaque notion en ce que le dirigeant voit ou gagne."
         )
 
     logger.info(f"Nouveau post | thème : {theme} | type : {post_type}")
     post, provider = _call_llm(system_prompt, user_message)
+    post = _enforce_length(post, system_prompt)
     logger.info(f"Nouveau post généré ({len(post.split())} mots) via {provider.upper()}")
     return post, theme
